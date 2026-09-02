@@ -11,8 +11,9 @@
     Secondary: cc.js path CBID, state.js path CBID
   -->
   <script>
-    const CA_CBID  = 'cfbb8be3-724d-4eaa-b02b-2be5a68ed1fe';  // California (US-06)
-    const US_CBID  = 'e2769309-3672-42d4-bc3f-d56333e6a880';  // All other US + default
+    const CA_CBID      = 'cfbb8be3-724d-4eaa-b02b-2be5a68ed1fe';  // California (US-06)
+    const US_CBID      = 'e2769309-3672-42d4-bc3f-d56333e6a880';  // All other US states
+    const DEFAULT_CBID = '585b1a77-4d05-4971-9cdf-be25b3165664';  // Default — all selected, no georegion match
 
     const SCENARIOS = {
       1: {
@@ -85,7 +86,7 @@
     .cbids .row { display: flex; gap: 12px; padding: 4px 0; }
     .cbids .dot-ca  { color: #3fb950; font-weight: 700; min-width: 110px; }
     .cbids .dot-us  { color: #388bfd; font-weight: 700; min-width: 110px; }
-    .cbids .dot-def { color: #8b949e; font-weight: 700; min-width: 110px; }
+    .cbids .dot-def { color: #e3b341; font-weight: 700; min-width: 110px; }
     .cbids .v { color: #cdd9e5; }
 
     .scenarios { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
@@ -103,15 +104,17 @@
     .sc-btn:disabled { background: #21262d; color: #484f58; border-color: #30363d; cursor: not-allowed; }
 
     .result-card { background: #161b22; border: 2px solid #30363d; border-radius: 10px; padding: 20px; margin-top: 8px; }
-    .result-card.res-ca  { border-color: #238636; }
-    .result-card.res-us  { border-color: #1f6feb; }
-    .result-card.res-wait { border-color: #9e6a03; }
+    .result-card.res-ca   { border-color: #238636; }
+    .result-card.res-us   { border-color: #1f6feb; }
+    .result-card.res-def  { border-color: #9e6a03; }
+    .result-card.res-wait { border-color: #484f58; }
     .result-card.res-err  { border-color: #b91c1c; }
 
     .verdict { font-size: 1.1rem; font-weight: 700; padding: 14px; border-radius: 7px; text-align: center; margin-bottom: 16px; }
     .v-ca   { background: #0f2a1a; color: #3fb950; }
     .v-us   { background: #0d1f3c; color: #388bfd; }
-    .v-wait { background: #2a200d; color: #d29922; }
+    .v-def  { background: #2d2208; color: #e3b341; }
+    .v-wait { background: #161b22; color: #6e7781; }
     .v-err  { background: #2d1a1a; color: #f85149; }
 
     .rows { border-top: 1px solid #21262d; }
@@ -123,6 +126,7 @@
     .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .72rem; font-weight: 700; font-family: inherit; }
     .b-ca   { background: #0f2a1a; color: #3fb950; border: 1px solid #238636; }
     .b-us   { background: #0d1f3c; color: #388bfd; border: 1px solid #1f6feb; }
+    .b-def  { background: #2d2208; color: #e3b341; border: 1px solid #9e6a03; }
     .b-gray { background: #1c1f24; color: #8b949e; border: 1px solid #30363d; }
     .b-warn { background: #2a200d; color: #d29922; border: 1px solid #9e6a03; }
 
@@ -146,9 +150,9 @@
 
 <!-- Hardcoded CBIDs -->
 <div class="cbids">
-  <div class="row"><span class="dot-ca">CA (US-06)</span><span class="v"><?= CA_CBID ?></span></div>
-  <div class="row"><span class="dot-us">US catch-all</span><span class="v"><?= US_CBID ?></span></div>
-  <div class="row"><span class="dot-def">DEFAULT (data-cbid)</span><span class="v">same as US catch-all in this account</span></div>
+  <div class="row"><span class="dot-ca">CA (US-06)</span><span class="v" id="lbl-ca"></span></div>
+  <div class="row"><span class="dot-us">US catch-all</span><span class="v" id="lbl-us"></span></div>
+  <div class="row"><span class="dot-def">DEFAULT (data-cbid)</span><span class="v" id="lbl-def"></span></div>
 </div>
 
 <!-- IP info -->
@@ -193,8 +197,9 @@
 
 <script>
   // ── Fill hardcoded CBID display ───────────────────────────────────────────
-  document.querySelector('.cbids .dot-ca').nextElementSibling.textContent = CA_CBID;
-  document.querySelector('.cbids .dot-us').nextElementSibling.textContent = US_CBID;
+  document.getElementById('lbl-ca').textContent  = CA_CBID;
+  document.getElementById('lbl-us').textContent  = US_CBID;
+  document.getElementById('lbl-def').textContent = DEFAULT_CBID;
 
   // ── IP check on load ──────────────────────────────────────────────────────
   (async () => {
@@ -236,8 +241,9 @@
   // ── Classify a CBID ──────────────────────────────────────────────────────
   function classify(cbid) {
     if (!cbid) return null;
-    if (cbid.toLowerCase() === CA_CBID.toLowerCase()) return 'ca';
-    if (cbid.toLowerCase() === US_CBID.toLowerCase()) return 'us';
+    if (cbid.toLowerCase() === CA_CBID.toLowerCase())      return 'ca';
+    if (cbid.toLowerCase() === US_CBID.toLowerCase())      return 'us';
+    if (cbid.toLowerCase() === DEFAULT_CBID.toLowerCase()) return 'default';
     return 'unknown';
   }
 
@@ -280,10 +286,12 @@
     } else if (effCls === 'us') {
       vClass = 'v-us'; cardClass = 'res-us';
       vText = '🇺🇸 US CATCH-ALL CBID loaded — US-06 rule did NOT win';
+    } else if (effCls === 'default') {
+      vClass = 'v-def'; cardClass = 'res-def';
+      vText = '⚠️ DEFAULT CBID loaded — no georegion rule matched at all';
     } else if (eff) {
       vClass = 'v-err'; cardClass = 'res-err'; vText = `⚠️ Unknown CBID: ${eff}`;
     } else if (cb && cb.loaded) {
-      // Fallback: use userCountry + serial
       const uc = cb.userCountry || d.userCountry || '';
       if (uc === 'us-06') {
         vClass = 'v-wait'; cardClass = 'res-wait';
@@ -305,6 +313,8 @@
       ? `<span class="badge b-ca">☀️ CA CBID</span>`
       : b === 'us'
       ? `<span class="badge b-us">🇺🇸 US CBID</span>`
+      : b === 'default'
+      ? `<span class="badge b-def">⚠️ DEFAULT CBID</span>`
       : `<span class="badge b-gray">unknown</span>`;
 
     const rows = [];
@@ -363,7 +373,7 @@
     script.id   = 'Cookiebot';
     script.type = 'text/javascript';
     script.src  = 'https://consent.cookiebot.com/uc.js';
-    script.setAttribute('data-cbid',       US_CBID);   // default = US CBID
+    script.setAttribute('data-cbid',       DEFAULT_CBID);  // fallback when no georegion matches
     script.setAttribute('data-georegions', sc.georegions);
 
     await new Promise(resolve => {
@@ -397,6 +407,8 @@
       document.getElementById('status').innerHTML = `✅ Scenario ${scenarioNum} done — CA CBID loaded`;
     } else if (cls === 'us') {
       document.getElementById('status').innerHTML = `⚠️ Scenario ${scenarioNum} done — US CBID loaded (not CA)`;
+    } else if (cls === 'default') {
+      document.getElementById('status').innerHTML = `⚠️ Scenario ${scenarioNum} done — DEFAULT CBID (no georegion matched)`;
     } else {
       document.getElementById('status').innerHTML =
         `⚠️ logconsent not captured. Check DevTools → Network → filter "logconsent" to read cbid= manually.`;
