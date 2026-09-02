@@ -176,17 +176,26 @@
     const rc  = d.resolvedCbid;
     const rCls = cls(rc);
 
-    // cc.js path CBID
+    // Scan ALL captured URLs for known CBIDs — order-independent
+    const allUrls = d.requests.map(r => r.url.toLowerCase());
+    const seenCbids = [CA_CBID, US_CBID, DEFAULT_CBID].filter(id =>
+      allUrls.some(u => u.includes(id.toLowerCase()))
+    );
+    // Resolved = first non-default CBID seen in any request; fall back to logconsent
+    const urlResolved = seenCbids.find(id => id !== DEFAULT_CBID) || seenCbids[0] || null;
+
+    // cc.js path (for display)
     let ccCbid = null;
-    const ccReq = d.requests.find(r => /cc\.js/i.test(r.url));
+    const ccReq = d.requests.find(r => /\/[0-9a-f-]{36}\/cc\.js/i.test(r.url));
     if (ccReq) { const m = ccReq.url.match(/consent\.cookiebot\.com\/([0-9a-f-]{36})\//i); if (m) ccCbid = m[1]; }
 
-    // state.js path CBID
+    // state.js path (for display)
     let stCbid = null;
-    const stReq = d.requests.find(r => /state\.js/i.test(r.url));
+    const stReq = d.requests.find(r => /consentconfig\/[0-9a-f-]{36}\/state/i.test(r.url));
     if (stReq) { const m = stReq.url.match(/consentconfig\/([0-9a-f-]{36})\//i); if (m) stCbid = m[1]; }
 
-    const eff = rc || ccCbid;
+    // Effective resolved CBID: URL scan > logconsent > cc.js path
+    const eff = urlResolved || rc || ccCbid;
     const eCls = cls(eff);
 
     const uc = (cb && cb.userCountry) || d.userCountry;
@@ -215,9 +224,10 @@
     document.getElementById('verdict').textContent = vTxt;
 
     const rows = [];
-    if (rc)     rows.push({ l: 'logconsent cbid= (primary)', v: `${rc} ${badge(rCls)}` });
-    if (ccCbid) rows.push({ l: 'cc.js path CBID',            v: `${ccCbid} ${badge(cls(ccCbid))}` });
-    if (stCbid) rows.push({ l: 'state.js path CBID',         v: `${stCbid} ${badge(cls(stCbid))}` });
+    if (seenCbids.length) rows.push({ l: 'CBIDs seen in any request', v: seenCbids.map(id => `${id} ${badge(cls(id))}`).join('<br>') });
+    if (rc)     rows.push({ l: 'logconsent cbid=',   v: `${rc} ${badge(rCls)}` });
+    if (ccCbid) rows.push({ l: 'cc.js path CBID',   v: `${ccCbid} ${badge(cls(ccCbid))}` });
+    if (stCbid) rows.push({ l: 'state.js path CBID', v: `${stCbid} ${badge(cls(stCbid))}` });
     if (uc)     rows.push({ l: 'Cookiebot userCountry',       v: uc + (uc.toLowerCase() === 'us-06' ? ' ☀️' : '') });
     if (cb) {
       rows.push({ l: 'ccpaApplies', v: String(cb.regulations?.ccpaApplies) });
@@ -246,6 +256,15 @@
         if (window.Cookiebot?.acceptAllConsents) window.Cookiebot.acceptAllConsents();
         else if (window.Cookiebot?.submitCustomConsent) window.Cookiebot.submitCustomConsent(true,true,true);
       } catch(_) {}
+    }, { once: true });
+
+    // Remove banner from DOM after accept so it never blocks the result panel
+    window.addEventListener('CookiebotOnAccept', () => {
+      ['CybotCookiebotDialog','CybotCookiebotDialogBodyUnderlay','CybotCookiebotFader'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+      });
+      document.querySelectorAll('[id^="CybotCookiebot"]').forEach(el => el.remove());
     }, { once: true });
 
     const s = document.createElement('script');
