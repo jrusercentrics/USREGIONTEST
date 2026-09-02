@@ -251,21 +251,6 @@
     document.getElementById('status').innerHTML = '<span class="spin"></span>Running…';
     document.getElementById('result').style.display = 'block';
 
-    window.addEventListener('CookiebotOnDialogDisplay', () => {
-      try {
-        if (window.Cookiebot?.acceptAllConsents) window.Cookiebot.acceptAllConsents();
-        else if (window.Cookiebot?.submitCustomConsent) window.Cookiebot.submitCustomConsent(true,true,true);
-      } catch(_) {}
-    }, { once: true });
-
-    // Remove banner from DOM after accept so it never blocks the result panel
-    window.addEventListener('CookiebotOnAccept', () => {
-      ['CybotCookiebotDialog','CybotCookiebotDialogBodyUnderlay','CybotCookiebotFader'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.remove();
-      });
-      document.querySelectorAll('[id^="CybotCookiebot"]').forEach(el => el.remove());
-    }, { once: true });
 
     const s = document.createElement('script');
     s.id   = 'Cookiebot';
