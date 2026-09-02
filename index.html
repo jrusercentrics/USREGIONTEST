@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cookiebot data-georegions Debug</title>
+
+  <!--
+    Network interception MUST be set up before Cookiebot loads.
+    This block runs before any dynamic script injection.
+  -->
+  <script>
+    window._cbDbg = { requests: [], events: [], t0: Date.now() };
+
+    // Intercept XHR
+    const _xhrOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (m, u) {
+      if (u && /cookiebot|cybot/i.test(u)) {
+        window._cbDbg.requests.push({ via: 'XHR', url: String(u), ms: Date.now() - window._cbDbg.t0 });
+        _refreshNet();
+      }
+      return _xhrOpen.apply(this, arguments);
+    };
+
+    // Intercept fetch
+    const _fetch = window.fetch;
+    window.fetch = function (input) {
+      const u = input ? String(input) : '';
+      if (/cookiebot|cybot/i.test(u)) {
+        window._cbDbg.requests.push({ via: 'fetch', url: u, ms: Date.now() - window._cbDbg.t0 });
+        _refreshNet();
+      }
+      return _fetch.apply(this, arguments);
+    };
+
+    // Resource observer
+    try {
+      new PerformanceObserver(list => {
+        list.getEntries().forEach(e => {
+          if (/cookiebot|cybot/i.test(e.name)) {
+            window._cbDbg.requests.push({ via: 'resource', url: e.name, ms: Math.round(e.startTime) });
+            _refreshNet();
+          }
+        });
+      }).observe({ entryTypes: ['resource'] });
+    } catch (_) {}
+
+    // Cookiebot events
+    ['CookiebotOnLoad', 'CookiebotOnDialogDisplay', 'CookiebotOnConsentReady', 'CookiebotOnAccept', 'CookiebotOnDecline'].forEach(ev => {
+      window.addEventListener(ev, () => {
+        window._cbDbg.events.push({ event: ev, ms: Date.now() - window._cbDbg.t0 });
+        _renderCookiebot();
+        _renderVerdict();
+      });
+    });
+
+    function _refreshNet() {
+      const el = document.getElementById('net-log');
+      if (!el) return;
+      el.innerHTML = window._cbDbg.requests.map(r =>
+        `<div class="row"><span class="lbl">[+${r.ms}ms] ${r.via.toUpperCase()}</span><span class="val mono">${r.url}</span></div>`
+      ).join('');
+    }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0d1117;
+      color: #cdd9e5;
+      padding: 24px 20px 60px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    h1 { font-size: 1.3rem; color: #e6edf3; margin-bottom: 2px; }
+    .subtitle { font-size: 0.82rem; color: #6e7781; margin-bottom: 24px; }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #6e7781;
+      font-weight: 600;
+      margin-bottom: 14px;
+    }
+
+    label { display: block; font-size: 0.78rem; color: #8b949e; margin-bottom: 4px; }
+
+    input[type="text"], select {
+      width: 100%;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #cdd9e5;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.82rem;
+      margin-bottom: 12px;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus, select:focus { outline: none; border-color: #388bfd; }
+
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    @media (max-width: 700px) { .grid-3 { grid-template-columns: 1fr; } }
+
+    .code-preview {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.78rem;
+      color: #7ee787;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-bottom: 14px;
+    }
+
+    .run-btn {
+      background: #238636;
+      color: #fff;
+      border: 1px solid #2ea043;
+      padding: 10px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .run-btn:hover { background: #2ea043; }
+    .run-btn:disabled { background: #21262d; color: #484f58; border-color: #30363d; cursor: not-allowed; }
+
+    .status { font-size: 0.8rem; color: #8b949e; margin-top: 10px; min-height: 18px; }
+
+    /* Verdict */
+    .verdict {
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 1rem;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 18px;
+      letter-spacing: 0.01em;
+    }
+    .v-ca      { background: #0f2a1a; color: #3fb950; border: 2px solid #238636; }
+    .v-us      { background: #0d1f3c; color: #388bfd; border: 2px solid #1f6feb; }
+    .v-default { background: #1c1f24; color: #8b949e; border: 2px solid #30363d; }
+    .v-pending { background: #1c1f24; color: #d29922; border: 2px solid #9e6a03; }
+    .v-unknown { background: #2d1a0e; color: #f0883e; border: 2px solid #9e5026; }
+
+    /* Result rows */
+    .row { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; border-bottom: 1px solid #21262d; }
+    .row:last-child { border-bottom: none; }
+    .lbl { font-size: 0.77rem; color: #6e7781; min-width: 200px; flex-shrink: 0; padding-top: 1px; }
+    .val { font-size: 0.85rem; color: #cdd9e5; word-break: break-all; }
+    .mono { font-family: 'Courier New', Courier, monospace; font-size: 0.8rem; }
+
+    /* Badges */
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
+    .b-green  { background: #0f2a1a; color: #3fb950; border: 1px solid #238636; }
+    .b-blue   { background: #0d1f3c; color: #388bfd; border: 1px solid #1f6feb; }
+    .b-gray   { background: #1c1f24; color: #8b949e; border: 1px solid #30363d; }
+    .b-yellow { background: #2a200d; color: #d29922; border: 1px solid #9e6a03; }
+    .b-red    { background: #2d1a1a; color: #f85149; border: 1px solid #b91c1c; }
+
+    .section-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #6e7781;
+      font-weight: 600;
+      margin: 18px 0 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-label::after { content: ''; flex: 1; height: 1px; background: #21262d; }
+
+    pre.dump {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.76rem;
+      color: #8b949e;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 340px;
+      overflow-y: auto;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid #30363d;
+      border-top-color: #388bfd;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .notice {
+      background: #2a200d;
+      border: 1px solid #9e6a03;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 0.8rem;
+      color: #d29922;
+      margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>🍪 Cookiebot data-georegions Debug Tool</h1>
+<p class="subtitle">
+  Tests which CBID is loaded for a visitor's geo-location. Connect via VPN, fill in the CBIDs below, then click Run Test.
+</p>
+
+<!-- Config card -->
+<div class="card">
+  <div class="card-title">⚙️ Configuration — fill in 3 distinct CBIDs</div>
+
+  <div class="notice">
+    ⚠️ Each CBID must be a separate domain registered in your Cookiebot Manager account.
+    The test is only meaningful if all three CBIDs are different — using the same CBID for all three
+    will always show the "same" result regardless of location.
+  </div>
+
+  <div class="grid-3">
+    <div>
+      <label>🌍 DEFAULT CBID (non-US visitors)</label>
+      <input type="text" id="cbid-default" value="e2769309-3672-42d4-bc3f-d56333e6a880" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+    </div>
+    <div>
+      <label>🇺🇸 US CBID (US catch-all — all states)</label>
+      <input type="text" id="cbid-us" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+    </div>
+    <div>
+      <label>☀️ CALIFORNIA CBID (US-06 only)</label>
+      <input type="text" id="cbid-ca" placeholder="yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy">
+    </div>
+  </div>
+
+  <div>
+    <label>data-georegions rule order (this is what we're testing)</label>
+    <select id="region-order">
+      <option value="ca_first">US-06 (CA) listed FIRST — tests if first-match-wins gives CA priority</option>
+      <option value="us_first">US catch-all listed FIRST — tests if first-match-wins gives US priority for CA visitors too</option>
+    </select>
+  </div>
+
+  <label style="margin-top:2px;">Resulting script tag (preview)</label>
+  <div class="code-preview" id="preview"></div>
+
+  <button class="run-btn" id="run-btn" onclick="runTest()">▶ Run Test</button>
+  <div class="status" id="status"></div>
+</div>
+
+<!-- Results card (hidden until test runs) -->
+<div class="card" id="results-card" style="display:none;">
+  <div class="card-title">📊 Test Results</div>
+
+  <!-- Verdict -->
+  <div id="verdict-box">
+    <div class="verdict v-pending">⏳ Waiting for Cookiebot to load…</div>
+  </div>
+
+  <!-- Step 1: IP/Geo -->
+  <div class="section-label">Step 1 — Your geo-location (VPN verification)</div>
+  <div id="geo-out"></div>
+
+  <!-- Step 2: Cookiebot state -->
+  <div class="section-label">Step 2 — window.Cookiebot state</div>
+  <div id="cb-out"></div>
+
+  <!-- Step 3: Network -->
+  <div class="section-label">Step 3 — Network requests to cookiebot.com / cybot.com</div>
+  <div id="net-log"></div>
+
+  <!-- Step 4: Events -->
+  <div class="section-label">Step 4 — Cookiebot events fired</div>
+  <div id="events-out"></div>
+
+  <!-- Step 5: Full dump -->
+  <div class="section-label">Step 5 — Full window.Cookiebot dump</div>
+  <pre class="dump" id="cb-dump">—</pre>
+</div>
+
+<script>
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function cfg() {
+    return {
+      def:   document.getElementById('cbid-default').value.trim(),
+      us:    document.getElementById('cbid-us').value.trim(),
+      ca:    document.getElementById('cbid-ca').value.trim(),
+      order: document.getElementById('region-order').value,
+    };
+  }
+
+  function georegionsAttr(c) {
+    return c.order === 'ca_first'
+      ? `{'region':'US-06','cbid':'${c.ca}'},{'region':'US','cbid':'${c.us}'}`
+      : `{'region':'US','cbid':'${c.us}'},{'region':'US-06','cbid':'${c.ca}'}`;
+  }
+
+  function updatePreview() {
+    const c = cfg();
+    const gr = georegionsAttr(c);
+    document.getElementById('preview').textContent =
+      `<script id="Cookiebot"\n` +
+      `  src="https://consent.cookiebot.com/uc.js"\n` +
+      `  data-cbid="${c.def || 'DEFAULT_CBID'}"\n` +
+      `  data-blockingmode="auto"\n` +
+      `  data-georegions="${gr}"\n` +
+      `  type="text/javascript"><\/script>`;
+  }
+
+  ['cbid-default','cbid-us','cbid-ca'].forEach(id =>
+    document.getElementById(id).addEventListener('input', updatePreview)
+  );
+  document.getElementById('region-order').addEventListener('change', updatePreview);
+  updatePreview();
+
+  // ── IP geo check ───────────────────────────────────────────────────────────
+
+  async function getGeo() {
+    // Try two public APIs as fallback
+    try {
+      const r = await fetch('https://ipapi.co/json/');
+      if (r.ok) {
+        const d = await r.json();
+        return {
+          ip:          d.ip,
+          country:     d.country_name,
+          countryCode: d.country_code,
+          region:      d.region,
+          regionCode:  d.region_code,  // 'CA' for California
+          city:        d.city,
+        };
+      }
+    } catch (_) {}
+    try {
+      const r = await fetch('https://ip-api.com/json/?fields=status,country,countryCode,regionName,region,city,query');
+      if (r.ok) {
+        const d = await r.json();
+        return {
+          ip:          d.query,
+          country:     d.country,
+          countryCode: d.countryCode,
+          region:      d.regionName,
+          regionCode:  d.region,       // 'CA' for California
+          city:        d.city,
+        };
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  function renderGeo(geo, c) {
+    if (!geo) {
+      document.getElementById('geo-out').innerHTML =
+        `<div class="row"><span class="lbl">Error</span><span class="val"><span class="badge b-red">Could not fetch IP info</span></span></div>`;
+      return null;
+    }
+
+    let expectBadge, expectNote;
+    if (geo.countryCode === 'US') {
+      if (geo.regionCode === 'CA') {
+        expectBadge = `<span class="badge b-green">☀️ California (US-06)</span>`;
+        expectNote  = `Expect CA CBID to load (${c.ca || '—'}) if US-06 wins`;
+      } else {
+        expectBadge = `<span class="badge b-blue">🇺🇸 Other US state (${geo.regionCode})</span>`;
+        expectNote  = `Expect US CBID to load (${c.us || '—'})`;
+      }
+    } else {
+      expectBadge = `<span class="badge b-gray">🌍 Non-US (${geo.countryCode})</span>`;
+      expectNote  = `Expect DEFAULT CBID to load (${c.def || '—'})`;
+    }
+
+    document.getElementById('geo-out').innerHTML = `
+      <div class="row"><span class="lbl">IP address</span><span class="val mono">${geo.ip}</span></div>
+      <div class="row"><span class="lbl">Country</span><span class="val">${geo.country} (${geo.countryCode})</span></div>
+      <div class="row"><span class="lbl">Region / state</span><span class="val">${geo.region} (${geo.regionCode})</span></div>
+      <div class="row"><span class="lbl">City</span><span class="val">${geo.city}</span></div>
+      <div class="row"><span class="lbl">Classification</span><span class="val">${expectBadge}</span></div>
+      <div class="row"><span class="lbl">Expected CBID</span><span class="val mono" style="color:#8b949e;">${expectNote}</span></div>
+    `;
+    return geo;
+  }
+
+  // ── Cookiebot render ───────────────────────────────────────────────────────
+
+  function _renderCookiebot() {
+    const cb = window.Cookiebot;
+    if (!cb) {
+      document.getElementById('cb-out').innerHTML =
+        `<div class="row"><span class="lbl">Status</span><span class="val"><span class="badge b-gray">Not loaded yet</span></span></div>`;
+      return;
+    }
+    const c = cfg();
+    const loadedCbid = cb.cbid || '—';
+
+    let cbidBadge;
+    if (c.ca && loadedCbid === c.ca)        cbidBadge = `<span class="badge b-green">☀️ CALIFORNIA CBID (US-06)</span>`;
+    else if (c.us && loadedCbid === c.us)   cbidBadge = `<span class="badge b-blue">🇺🇸 US CATCH-ALL CBID</span>`;
+    else if (c.def && loadedCbid === c.def) cbidBadge = `<span class="badge b-gray">🌍 DEFAULT CBID</span>`;
+    else                                     cbidBadge = `<span class="badge b-yellow">? Unrecognised</span>`;
+
+    document.getElementById('cb-out').innerHTML = `
+      <div class="row"><span class="lbl">window.Cookiebot.cbid</span><span class="val mono">${loadedCbid} &nbsp;${cbidBadge}</span></div>
+      <div class="row"><span class="lbl">window.Cookiebot.georegion</span><span class="val mono">${cb.georegion !== undefined ? JSON.stringify(cb.georegion) : '(property not found)'}</span></div>
+      <div class="row"><span class="lbl">window.Cookiebot.version</span><span class="val mono">${cb.version || '—'}</span></div>
+      <div class="row"><span class="lbl">hasResponse</span><span class="val mono">${cb.hasResponse !== undefined ? String(cb.hasResponse) : '—'}</span></div>
+      <div class="row"><span class="lbl">consent state</span><span class="val mono">${cb.consent ? JSON.stringify(cb.consent) : '— (no interaction yet)'}</span></div>
+      <div class="row"><span class="lbl">Native dialog rendered</span><span class="val">${document.getElementById('CybotCookiebotDialog') ? '<span class="badge b-green">✅ Yes</span>' : '<span class="badge b-gray">No (custom banner or consent already stored)</span>'}</span></div>
+    `;
+
+    // Full dump
+    const dump = {};
+    try {
+      ['cbid','georegion','version','stamp','hasResponse','consented','declined',
+       'consent','doNotTrack','loaded','expired','dialog','changed','regulations'].forEach(k => {
+        if (k in cb) dump[k] = cb[k];
+      });
+      for (const k in cb) { if (typeof cb[k] !== 'function' && !(k in dump)) dump[k] = cb[k]; }
+    } catch (_) {}
+    document.getElementById('cb-dump').textContent = JSON.stringify(dump, null, 2);
+  }
+
+  function _renderVerdict() {
+    const cb = window.Cookiebot;
+    if (!cb) return;
+    const c = cfg();
+    const loadedCbid = cb.cbid || '';
+
+    let cls, text;
+    if (c.ca && loadedCbid === c.ca) {
+      cls  = 'v-ca';
+      text = '☀️  CALIFORNIA CBID loaded — US-06 rule matched this visitor';
+    } else if (c.us && loadedCbid === c.us) {
+      cls  = 'v-us';
+      text = '🇺🇸  US CATCH-ALL CBID loaded — US rule matched this visitor';
+    } else if (c.def && loadedCbid === c.def) {
+      cls  = 'v-default';
+      text = '🌍  DEFAULT CBID loaded — no geo-region rule matched';
+    } else if (loadedCbid) {
+      cls  = 'v-unknown';
+      text = `⚠️  Loaded CBID ${loadedCbid} does not match any configured value`;
+    } else {
+      cls  = 'v-pending';
+      text = '⏳  Cookiebot not loaded yet…';
+    }
+
+    document.getElementById('verdict-box').innerHTML =
+      `<div class="verdict ${cls}">${text}</div>`;
+  }
+
+  function _renderEvents() {
+    const evs = window._cbDbg.events;
+    if (!evs.length) {
+      document.getElementById('events-out').innerHTML =
+        `<div class="row"><span class="lbl">Status</span><span class="val"><span class="badge b-gray">No events yet</span></span></div>`;
+      return;
+    }
+    document.getElementById('events-out').innerHTML = evs.map(e =>
+      `<div class="row"><span class="lbl">+${e.ms}ms</span><span class="val mono">${e.event}</span></div>`
+    ).join('');
+  }
+
+  // ── Main test runner ───────────────────────────────────────────────────────
+
+  let _running = false;
+
+  async function runTest() {
+    if (_running) return;
+
+    const c = cfg();
+    if (!c.ca || !c.us) {
+      document.getElementById('status').innerHTML =
+        '❌ Fill in both the US CBID and California CBID before running.';
+      return;
+    }
+
+    _running = true;
+    const btn = document.getElementById('run-btn');
+    btn.disabled = true;
+    document.getElementById('results-card').style.display = 'block';
+    document.getElementById('verdict-box').innerHTML =
+      `<div class="verdict v-pending">⏳ Running test…</div>`;
+
+    // ── Step 1: IP ──────────────────────────────────────────────────────────
+    document.getElementById('status').innerHTML =
+      '<span class="spinner"></span>1/4 — Checking your IP and location…';
+    const geo = await getGeo();
+    renderGeo(geo, c);
+
+    // ── Step 2: Reset and inject Cookiebot ─────────────────────────────────
+    document.getElementById('status').innerHTML =
+      '<span class="spinner"></span>2/4 — Injecting Cookiebot script with data-georegions…';
+
+    // Remove any existing Cookiebot script from a previous run
+    const old = document.getElementById('Cookiebot');
+    if (old) old.remove();
+
+    // Reset state
+    window._cbDbg.requests = [];
+    window._cbDbg.events   = [];
+    window._cbDbg.t0       = Date.now();
+
+    // Inject fresh script
+    const s = document.createElement('script');
+    s.id   = 'Cookiebot';
+    s.type = 'text/javascript';
+    s.src  = 'https://consent.cookiebot.com/uc.js';
+    s.setAttribute('data-cbid',         c.def);
+    s.setAttribute('data-blockingmode', 'auto');
+    s.setAttribute('data-georegions',   georegionsAttr(c));
+
+    await new Promise((resolve) => {
+      s.onload  = resolve;
+      s.onerror = resolve;        // still resolve so we can show the error
+      setTimeout(resolve, 10000); // safety timeout
+      document.head.appendChild(s);
+    });
+
+    // ── Step 3: Wait a tick for CookiebotOnLoad to fire ────────────────────
+    document.getElementById('status').innerHTML =
+      '<span class="spinner"></span>3/4 — Waiting for CookiebotOnLoad event…';
+    await new Promise(r => setTimeout(r, 2500));
+
+    // ── Step 4: Render all results ─────────────────────────────────────────
+    document.getElementById('status').innerHTML =
+      '<span class="spinner"></span>4/4 — Rendering results…';
+
+    _renderCookiebot();
+    _renderVerdict();
+    _renderEvents();
+
+    // net-log is updated live; ensure it is up to date
+    const netEl = document.getElementById('net-log');
+    if (window._cbDbg.requests.length === 0) {
+      netEl.innerHTML = `<div class="row"><span class="lbl">Note</span><span class="val"><span class="badge b-yellow">No requests captured via XHR/fetch — Cookiebot may use &lt;script&gt; tags or JSONP. Check browser DevTools Network tab for full picture.</span></span></div>`;
+    }
+
+    document.getElementById('status').innerHTML = '✅ Test complete. Check the verdict above.';
+    btn.disabled = false;
+    _running = false;
+  }
+
+  // Refresh network log and events periodically while a test is running
+  setInterval(() => {
+    if (document.getElementById('results-card').style.display !== 'none') {
+      _renderEvents();
+    }
+  }, 800);
+</script>
+</body>
+</html>
