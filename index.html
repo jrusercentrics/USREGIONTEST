@@ -3,45 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cookiebot Georegions Precedence Test</title>
-
-  <!--
-    Intercepts must run before ANY Cookiebot load.
-    Primary signal: logconsent.ashx cbid= param (old arch)
-    Secondary: cc.js path CBID, state.js path CBID
-  -->
+  <title>Cookiebot Georegions Test</title>
   <script>
-    const CA_CBID      = 'cfbb8be3-724d-4eaa-b02b-2be5a68ed1fe';  // California (US-06)
-    const US_CBID      = 'e2769309-3672-42d4-bc3f-d56333e6a880';  // All other US states
-    const DEFAULT_CBID = '585b1a77-4d05-4971-9cdf-be25b3165664';  // Default — all selected, no georegion match
+    const CA_CBID      = 'cfbb8be3-724d-4eaa-b02b-2be5a68ed1fe';  // California only
+    const US_CBID      = 'e2769309-3672-42d4-bc3f-d56333e6a880';  // All US except CA
+    const DEFAULT_CBID = '585b1a77-4d05-4971-9cdf-be25b3165664';  // All locations (fallback)
 
-    const SCENARIOS = {
-      1: {
-        label: 'Only US-06 rule — no US catch-all',
-        georegions: `{'region':'US-06','cbid':'${CA_CBID}'}`,
-        expect: 'CA CBID should load — US-06 with no competition',
-      },
-      2: {
-        label: 'US-06 FIRST → US catch-all second',
-        georegions: `{'region':'US-06','cbid':'${CA_CBID}'},{'region':'US','cbid':'${US_CBID}'}`,
-        expect: 'CA CBID should load if first-match-wins OR if US-06 is more specific',
-      },
-      3: {
-        label: 'US catch-all FIRST → US-06 second',
-        georegions: `{'region':'US','cbid':'${US_CBID}'},{'region':'US-06','cbid':'${CA_CBID}'}`,
-        expect: 'US CBID expected if first-match-wins; CA CBID if US-06 has priority',
-      },
-    };
+    // Georegions: US-06 first, then US catch-all — mirrors Sigma Nursing setup
+    const GEOREGIONS = `{'region':'US-06','cbid':'${CA_CBID}'},{'region':'US','cbid':'${US_CBID}'}`;
 
     window._dbg = { resolvedCbid: null, userCountry: null, requests: [], events: [], t0: Date.now() };
 
     function _onUrl(url) {
       const u = String(url);
       window._dbg.requests.push({ url: u, ms: Date.now() - window._dbg.t0 });
-
       if (/logconsent\.ashx/i.test(u)) {
         try { const p = new URL(u); window._dbg.resolvedCbid = p.searchParams.get('cbid'); window._dbg.userCountry = p.searchParams.get('usercountry'); } catch(_) {}
-        _update();
+        renderResult();
       }
     }
 
@@ -62,162 +40,103 @@
       }).observe({ entryTypes: ['resource'] });
     } catch(_) {}
 
-    ['CookiebotOnLoad','CookiebotOnDialogDisplay','CookiebotOnConsentReady',
-     'CookiebotOnAccept','CookiebotOnDecline'].forEach(ev => {
+    ['CookiebotOnLoad','CookiebotOnDialogDisplay','CookiebotOnConsentReady','CookiebotOnAccept','CookiebotOnDecline'].forEach(ev => {
       window.addEventListener(ev, () => {
         window._dbg.events.push({ ev, ms: Date.now() - window._dbg.t0 });
-        _update();
+        renderResult();
       });
     });
-
-    function _update() {
-      if (typeof renderResult === 'function') renderResult();
-    }
   </script>
-
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0d1117; color: #cdd9e5; padding: 28px 20px 60px; max-width: 860px; margin: 0 auto; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0d1117; color: #cdd9e5; padding: 32px 20px 60px; max-width: 700px; margin: 0 auto; }
+    h1 { font-size: 1.2rem; color: #e6edf3; margin-bottom: 6px; }
+    .sub { font-size: .83rem; color: #6e7781; margin-bottom: 24px; }
 
-    h1 { font-size: 1.25rem; color: #e6edf3; margin-bottom: 4px; }
-    .sub { font-size: .82rem; color: #6e7781; margin-bottom: 24px; }
+    .config { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; font-family: monospace; font-size: .8rem; line-height: 1.8; }
+    .config .k { color: #6e7781; min-width: 130px; display: inline-block; }
+    .lca { color: #3fb950; } .lus { color: #388bfd; } .ldef { color: #e3b341; }
 
-    .cbids { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; font-family: 'Courier New', monospace; font-size: .8rem; }
-    .cbids .row { display: flex; gap: 12px; padding: 4px 0; }
-    .cbids .dot-ca  { color: #3fb950; font-weight: 700; min-width: 110px; }
-    .cbids .dot-us  { color: #388bfd; font-weight: 700; min-width: 110px; }
-    .cbids .dot-def { color: #e3b341; font-weight: 700; min-width: 110px; }
-    .cbids .v { color: #cdd9e5; }
+    .ip-bar { font-size: .82rem; color: #8b949e; margin-bottom: 20px; }
+    .ip-bar span { color: #cdd9e5; }
 
-    .scenarios { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-    @media(max-width:640px){ .scenarios { grid-template-columns: 1fr; } }
+    .run-btn { width: 100%; padding: 13px; font-size: 1rem; font-weight: 700; background: #238636; color: #fff; border: 1px solid #2ea043; border-radius: 7px; cursor: pointer; margin-bottom: 20px; }
+    .run-btn:hover { background: #2ea043; }
+    .run-btn:disabled { background: #21262d; color: #484f58; border-color: #30363d; cursor: not-allowed; }
 
-    .sc-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px; cursor: pointer; transition: border-color .15s; }
-    .sc-card:hover { border-color: #388bfd; }
-    .sc-card.active { border-color: #388bfd; background: #0d1f3c; }
-    .sc-num { font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; color: #6e7781; margin-bottom: 6px; }
-    .sc-label { font-size: .85rem; color: #cdd9e5; font-weight: 600; margin-bottom: 8px; }
-    .sc-geo { font-family: 'Courier New', monospace; font-size: .72rem; color: #7ee787; background: #0d1117; border-radius: 4px; padding: 6px 8px; word-break: break-all; margin-bottom: 8px; }
-    .sc-expect { font-size: .75rem; color: #8b949e; }
-    .sc-btn { margin-top: 10px; width: 100%; padding: 8px; background: #238636; color: #fff; border: 1px solid #2ea043; border-radius: 5px; cursor: pointer; font-size: .82rem; font-weight: 600; }
-    .sc-btn:hover { background: #2ea043; }
-    .sc-btn:disabled { background: #21262d; color: #484f58; border-color: #30363d; cursor: not-allowed; }
+    .result { border: 2px solid #30363d; border-radius: 10px; padding: 20px; display: none; }
+    .result.ca  { border-color: #238636; }
+    .result.us  { border-color: #1f6feb; }
+    .result.def { border-color: #9e6a03; }
+    .result.err { border-color: #b91c1c; }
+    .result.wait { border-color: #484f58; }
 
-    .result-card { background: #161b22; border: 2px solid #30363d; border-radius: 10px; padding: 20px; margin-top: 8px; }
-    .result-card.res-ca   { border-color: #238636; }
-    .result-card.res-us   { border-color: #1f6feb; }
-    .result-card.res-def  { border-color: #9e6a03; }
-    .result-card.res-wait { border-color: #484f58; }
-    .result-card.res-err  { border-color: #b91c1c; }
-
-    .verdict { font-size: 1.1rem; font-weight: 700; padding: 14px; border-radius: 7px; text-align: center; margin-bottom: 16px; }
-    .v-ca   { background: #0f2a1a; color: #3fb950; }
-    .v-us   { background: #0d1f3c; color: #388bfd; }
-    .v-def  { background: #2d2208; color: #e3b341; }
-    .v-wait { background: #161b22; color: #6e7781; }
-    .v-err  { background: #2d1a1a; color: #f85149; }
+    .verdict { font-size: 1.15rem; font-weight: 700; padding: 14px; border-radius: 7px; text-align: center; margin-bottom: 16px; }
+    .vca   { background: #0f2a1a; color: #3fb950; }
+    .vus   { background: #0d1f3c; color: #388bfd; }
+    .vdef  { background: #2d2208; color: #e3b341; }
+    .vwait { background: #161b22; color: #6e7781; }
+    .verr  { background: #2d1a1a; color: #f85149; }
 
     .rows { border-top: 1px solid #21262d; }
-    .row  { display: flex; gap: 12px; padding: 7px 0; border-bottom: 1px solid #21262d; }
+    .row  { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid #21262d; }
     .row:last-child { border-bottom: none; }
-    .lbl  { font-size: .76rem; color: #6e7781; min-width: 200px; flex-shrink: 0; padding-top: 1px; }
-    .val  { font-size: .83rem; color: #cdd9e5; word-break: break-all; font-family: 'Courier New', monospace; }
+    .lbl  { font-size: .76rem; color: #6e7781; min-width: 200px; flex-shrink: 0; }
+    .val  { font-size: .82rem; color: #cdd9e5; word-break: break-all; font-family: monospace; }
 
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .72rem; font-weight: 700; font-family: inherit; }
-    .b-ca   { background: #0f2a1a; color: #3fb950; border: 1px solid #238636; }
-    .b-us   { background: #0d1f3c; color: #388bfd; border: 1px solid #1f6feb; }
-    .b-def  { background: #2d2208; color: #e3b341; border: 1px solid #9e6a03; }
-    .b-gray { background: #1c1f24; color: #8b949e; border: 1px solid #30363d; }
-    .b-warn { background: #2a200d; color: #d29922; border: 1px solid #9e6a03; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .72rem; font-weight: 700; }
+    .bca  { background: #0f2a1a; color: #3fb950; border: 1px solid #238636; }
+    .bus  { background: #0d1f3c; color: #388bfd; border: 1px solid #1f6feb; }
+    .bdef { background: #2d2208; color: #e3b341; border: 1px solid #9e6a03; }
+    .bgray{ background: #1c1f24; color: #8b949e; border: 1px solid #30363d; }
 
-    .net-log { margin-top: 10px; }
-    .net-row { font-size: .73rem; font-family: 'Courier New', monospace; color: #8b949e; padding: 3px 0; word-break: break-all; }
-    .net-row.hl { color: #f0883e; font-weight: 700; }
+    .net { margin-top: 12px; }
+    .nr  { font-size: .72rem; font-family: monospace; color: #484f58; padding: 2px 0; word-break: break-all; }
+    .nr.hl { color: #f0883e; font-weight: 700; }
 
-    .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid #30363d; border-top-color: #388bfd; border-radius: 50%; animation: sp .7s linear infinite; margin-right: 5px; vertical-align: middle; }
+    .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid #30363d; border-top-color: #388bfd; border-radius: 50%; animation: sp .7s linear infinite; margin-right: 6px; vertical-align: middle; }
     @keyframes sp { to { transform: rotate(360deg); } }
-
-    .status-line { font-size: .8rem; color: #8b949e; margin-top: 10px; min-height: 18px; }
-
-    .ip-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: .83rem; }
-    .ip-card .label { color: #6e7781; font-size: .76rem; }
+    .status { font-size: .8rem; color: #6e7781; margin-bottom: 12px; min-height: 18px; }
   </style>
 </head>
 <body>
 
-<h1>🍪 Cookiebot data-georegions Precedence Test</h1>
-<p class="sub">Three scenarios. California VPN only. Which CBID does Cookiebot resolve for a US-06 visitor?</p>
+<h1>🍪 Cookiebot Georegions Precedence Test</h1>
+<p class="sub">Does <code>US-06</code> (state) win over <code>US</code> (country) for a California visitor?</p>
 
-<!-- Hardcoded CBIDs -->
-<div class="cbids">
-  <div class="row"><span class="dot-ca">CA (US-06)</span><span class="v" id="lbl-ca"></span></div>
-  <div class="row"><span class="dot-us">US catch-all</span><span class="v" id="lbl-us"></span></div>
-  <div class="row"><span class="dot-def">DEFAULT (data-cbid)</span><span class="v" id="lbl-def"></span></div>
-</div>
-
-<!-- IP info -->
-<div class="ip-card" id="ip-card">
-  <span class="label">Your IP: </span><span id="ip-val">checking…</span>
-  &nbsp;&nbsp;<span class="label">Cookiebot geo: </span><span id="uc-country">—</span>
-</div>
-
-<!-- Three scenario cards -->
-<div class="scenarios">
-  <div class="sc-card" id="sc1">
-    <div class="sc-num">Scenario 1</div>
-    <div class="sc-label">Only US-06 — no US catch-all</div>
-    <div class="sc-geo">{'region':'US-06','cbid':'<span style="color:#3fb950">CA</span>'}</div>
-    <div class="sc-expect">Does US-06 match a CA visitor on its own?</div>
-    <button class="sc-btn" onclick="runScenario(1)" id="btn1">▶ Clear &amp; Run</button>
-  </div>
-  <div class="sc-card" id="sc2">
-    <div class="sc-num">Scenario 2</div>
-    <div class="sc-label">US-06 FIRST → US second</div>
-    <div class="sc-geo">{'region':'US-06','cbid':'<span style="color:#3fb950">CA</span>'},{'region':'US','cbid':'<span style="color:#388bfd">US</span>'}</div>
-    <div class="sc-expect">First-match-wins favours CA. Does it?</div>
-    <button class="sc-btn" onclick="runScenario(2)" id="btn2">▶ Clear &amp; Run</button>
-  </div>
-  <div class="sc-card" id="sc3">
-    <div class="sc-num">Scenario 3</div>
-    <div class="sc-label">US FIRST → US-06 second</div>
-    <div class="sc-geo">{'region':'US','cbid':'<span style="color:#388bfd">US</span>'},{'region':'US-06','cbid':'<span style="color:#3fb950">CA</span>'}</div>
-    <div class="sc-expect">First-match-wins favours US. Does US-06 override?</div>
-    <button class="sc-btn" onclick="runScenario(3)" id="btn3">▶ Clear &amp; Run</button>
+<div class="config">
+  <div><span class="k">data-cbid (default)</span> <span class="ldef">585b1a77-... (all locations)</span></div>
+  <div><span class="k">georegion US-06 →</span> <span class="lca">cfbb8be3-... (California only)</span></div>
+  <div><span class="k">georegion US →</span> <span class="lus">e2769309-... (all US except CA)</span></div>
+  <div style="margin-top:8px;color:#6e7781;font-family:sans-serif;font-size:.78rem;">
+    Rule order: <code style="color:#cdd9e5">{'region':'US-06','cbid':'CA'},{'region':'US','cbid':'US'}</code>
   </div>
 </div>
 
-<div class="status-line" id="status"></div>
+<div class="ip-bar" id="ip-bar">Your IP: <span id="ip-val">checking…</span> &nbsp;|&nbsp; Cookiebot geo: <span id="cb-geo">—</span></div>
 
-<!-- Result panel -->
-<div class="result-card res-wait" id="result-card" style="display:none;">
-  <div class="verdict v-wait" id="verdict">⏳ Running…</div>
+<div class="status" id="status"></div>
+<button class="run-btn" id="run-btn" onclick="run()">▶ Clear cookies &amp; Run test</button>
+
+<div class="result wait" id="result" style="display:none;">
+  <div class="verdict vwait" id="verdict">⏳ Loading…</div>
   <div class="rows" id="signals"></div>
-  <div class="net-log" id="net-log"></div>
+  <div class="net" id="net"></div>
 </div>
 
 <script>
-  // ── Fill hardcoded CBID display ───────────────────────────────────────────
-  document.getElementById('lbl-ca').textContent  = CA_CBID;
-  document.getElementById('lbl-us').textContent  = US_CBID;
-  document.getElementById('lbl-def').textContent = DEFAULT_CBID;
-
-  // ── IP check on load ──────────────────────────────────────────────────────
+  // IP check
   (async () => {
     try {
-      const r = await fetch('https://ipapi.co/json/');
-      const d = await r.json();
-      document.getElementById('ip-val').textContent =
-        `${d.ip} — ${d.city}, ${d.region} (${d.country_code}) ${d.country_code === 'US' && d.region_code === 'CA' ? '☀️ California — good!' : d.country_code === 'US' ? `🇺🇸 ${d.region_code}` : '🌍 Non-US'}`;
-    } catch(_) {
-      document.getElementById('ip-val').textContent = 'Could not fetch — check manually';
-    }
+      const d = await (await fetch('https://ipapi.co/json/')).json();
+      const tag = d.country_code === 'US' && d.region_code === 'CA'
+        ? '☀️ California — good!'
+        : d.country_code === 'US' ? `🇺🇸 ${d.region}` : '🌍 Non-US';
+      document.getElementById('ip-val').textContent = `${d.ip} — ${d.city} (${tag})`;
+    } catch(_) { document.getElementById('ip-val').textContent = 'Could not fetch'; }
   })();
 
-  // ── Read URL param ────────────────────────────────────────────────────────
-  const _qp = new URLSearchParams(location.search);
-  const _activeScenario = parseInt(_qp.get('s') || '0');
-
-  // ── Clear cookies ─────────────────────────────────────────────────────────
+  // Cookie clear
   function clearConsent() {
     document.cookie.split(';').forEach(pair => {
       const name = pair.split('=')[0].trim();
@@ -232,200 +151,132 @@
     });
   }
 
-  // ── Run a scenario ────────────────────────────────────────────────────────
-  function runScenario(n) {
-    clearConsent();
-    window.location.href = `${location.pathname}?s=${n}`;
-  }
+  function run() { clearConsent(); location.href = location.pathname + '?run=1'; }
 
-  // ── Classify a CBID ──────────────────────────────────────────────────────
-  function classify(cbid) {
+  // Classify
+  function cls(cbid) {
     if (!cbid) return null;
-    if (cbid.toLowerCase() === CA_CBID.toLowerCase())      return 'ca';
-    if (cbid.toLowerCase() === US_CBID.toLowerCase())      return 'us';
-    if (cbid.toLowerCase() === DEFAULT_CBID.toLowerCase()) return 'default';
+    const c = cbid.toLowerCase();
+    if (c === CA_CBID.toLowerCase())      return 'ca';
+    if (c === US_CBID.toLowerCase())      return 'us';
+    if (c === DEFAULT_CBID.toLowerCase()) return 'default';
     return 'unknown';
   }
 
-  // ── Render result ─────────────────────────────────────────────────────────
+  function badge(c) {
+    return c === 'ca'      ? `<span class="badge bca">☀️ CA CBID</span>`
+         : c === 'us'      ? `<span class="badge bus">🇺🇸 US CBID</span>`
+         : c === 'default' ? `<span class="badge bdef">⚠️ DEFAULT CBID</span>`
+                           : `<span class="badge bgray">unknown</span>`;
+  }
+
   function renderResult() {
     const d   = window._dbg;
     const cb  = window.Cookiebot;
-    const rc  = d.resolvedCbid;  // from logconsent (primary)
-    const cls = classify(rc);
-    const card = document.getElementById('result-card');
+    const rc  = d.resolvedCbid;
+    const rCls = cls(rc);
 
-    // Determine CBID from network URLs as fallback
-    let ccjsCbid = null;
-    const ccjsReq = d.requests.find(r => /cc\.js/i.test(r.url));
-    if (ccjsReq) {
-      const m = ccjsReq.url.match(/consent\.cookiebot\.com\/([0-9a-f-]{36})\//i);
-      if (m) ccjsCbid = m[1];
-    }
-    const ccjsClass = classify(ccjsCbid);
+    // cc.js path CBID
+    let ccCbid = null;
+    const ccReq = d.requests.find(r => /cc\.js/i.test(r.url));
+    if (ccReq) { const m = ccReq.url.match(/consent\.cookiebot\.com\/([0-9a-f-]{36})\//i); if (m) ccCbid = m[1]; }
 
     // state.js path CBID
-    let stateCbid = null;
-    const stateReq = d.requests.find(r => /state\.js/i.test(r.url));
-    if (stateReq) {
-      const m = stateReq.url.match(/consentconfig\/([0-9a-f-]{36})\//i);
-      if (m) stateCbid = m[1];
-    }
+    let stCbid = null;
+    const stReq = d.requests.find(r => /state\.js/i.test(r.url));
+    if (stReq) { const m = stReq.url.match(/consentconfig\/([0-9a-f-]{36})\//i); if (m) stCbid = m[1]; }
 
-    // Effective resolved CBID: logconsent > cc.js path
-    const eff    = rc || ccjsCbid;
-    const effCls = classify(eff);
+    const eff = rc || ccCbid;
+    const eCls = cls(eff);
+
+    const uc = (cb && cb.userCountry) || d.userCountry;
+    if (uc) document.getElementById('cb-geo').textContent = uc;
 
     // Verdict
-    let vClass, vText, cardClass;
+    let vCls, vTxt, rCl;
     if (!cb || !cb.loaded) {
-      vClass = 'v-wait'; vText = '⏳ Loading Cookiebot…'; cardClass = 'res-wait';
-    } else if (effCls === 'ca') {
-      vClass = 'v-ca'; cardClass = 'res-ca';
-      vText = '✅ CALIFORNIA CBID loaded — US-06 rule matched';
-    } else if (effCls === 'us') {
-      vClass = 'v-us'; cardClass = 'res-us';
-      vText = '🇺🇸 US CATCH-ALL CBID loaded — US-06 rule did NOT win';
-    } else if (effCls === 'default') {
-      vClass = 'v-def'; cardClass = 'res-def';
-      vText = '⚠️ DEFAULT CBID loaded — no georegion rule matched at all';
+      vCls = 'vwait'; vTxt = '⏳ Loading Cookiebot…'; rCl = 'wait';
+    } else if (eCls === 'ca') {
+      vCls = 'vca'; vTxt = '✅ CALIFORNIA CBID — US-06 rule WON'; rCl = 'ca';
+    } else if (eCls === 'us') {
+      vCls = 'vus'; vTxt = '🇺🇸 US CBID — US catch-all WON (US-06 lost)'; rCl = 'us';
+    } else if (eCls === 'default') {
+      vCls = 'vdef'; vTxt = '⚠️ DEFAULT CBID — no georegion matched at all'; rCl = 'def';
     } else if (eff) {
-      vClass = 'v-err'; cardClass = 'res-err'; vText = `⚠️ Unknown CBID: ${eff}`;
-    } else if (cb && cb.loaded) {
-      const uc = cb.userCountry || d.userCountry || '';
-      if (uc === 'us-06') {
-        vClass = 'v-wait'; cardClass = 'res-wait';
-        vText = '⚠️ logconsent not captured yet — waiting. userCountry = us-06 (CA detected)';
-      } else {
-        vClass = 'v-wait'; cardClass = 'res-wait'; vText = '⏳ Waiting for logconsent…';
-      }
+      vCls = 'verr'; vTxt = `⚠️ Unknown CBID: ${eff}`; rCl = 'err';
     } else {
-      vClass = 'v-wait'; cardClass = 'res-wait'; vText = '⏳ Waiting for Cookiebot…';
+      vCls = 'vwait'; vTxt = '⏳ Waiting for logconsent…'; rCl = 'wait';
     }
 
-    card.className  = `result-card ${cardClass}`;
-    card.style.display = 'block';
-    document.getElementById('verdict').className = `verdict ${vClass}`;
-    document.getElementById('verdict').textContent = vText;
-
-    // Signals
-    const cbid = b => b === 'ca'
-      ? `<span class="badge b-ca">☀️ CA CBID</span>`
-      : b === 'us'
-      ? `<span class="badge b-us">🇺🇸 US CBID</span>`
-      : b === 'default'
-      ? `<span class="badge b-def">⚠️ DEFAULT CBID</span>`
-      : `<span class="badge b-gray">unknown</span>`;
+    const el = document.getElementById('result');
+    el.style.display = 'block';
+    el.className = `result ${rCl}`;
+    document.getElementById('verdict').className = `verdict ${vCls}`;
+    document.getElementById('verdict').textContent = vTxt;
 
     const rows = [];
-    if (rc) rows.push({ l: 'logconsent cbid= (primary)',   v: `${rc} ${cbid(cls)}` });
-    if (ccjsCbid) rows.push({ l: 'cc.js path CBID',        v: `${ccjsCbid} ${cbid(ccjsClass)}` });
-    if (stateCbid) rows.push({ l: 'state.js path CBID',    v: `${stateCbid} ${cbid(classify(stateCbid))}` });
-    const uc = (cb && cb.userCountry) || d.userCountry;
-    if (uc) rows.push({ l: 'Cookiebot userCountry',        v: `${uc} ${uc === 'us-06' ? '<span class="badge b-ca">☀️ California</span>' : '<span class="badge b-us">🇺🇸 Other US</span>'}` });
+    if (rc)     rows.push({ l: 'logconsent cbid= (primary)', v: `${rc} ${badge(rCls)}` });
+    if (ccCbid) rows.push({ l: 'cc.js path CBID',            v: `${ccCbid} ${badge(cls(ccCbid))}` });
+    if (stCbid) rows.push({ l: 'state.js path CBID',         v: `${stCbid} ${badge(cls(stCbid))}` });
+    if (uc)     rows.push({ l: 'Cookiebot userCountry',       v: uc + (uc.toLowerCase() === 'us-06' ? ' ☀️' : '') });
     if (cb) {
       rows.push({ l: 'ccpaApplies', v: String(cb.regulations?.ccpaApplies) });
       rows.push({ l: 'gdprApplies', v: String(cb.regulations?.gdprApplies) });
-      rows.push({ l: 'serial (data-cbid)',  v: cb.serial || '—' });
-      rows.push({ l: 'consentUTC',          v: cb.consentUTC || '—' });
+      rows.push({ l: 'serial (= data-cbid)', v: cb.serial || '—' });
     }
-    if (d.events.length) rows.push({ l: 'Events fired', v: d.events.map(e => `${e.ev} (+${e.ms}ms)`).join(', ') });
+    if (d.events.length) rows.push({ l: 'Events', v: d.events.map(e => `${e.ev} +${e.ms}ms`).join(', ') });
 
     document.getElementById('signals').innerHTML = rows.map(r =>
       `<div class="row"><span class="lbl">${r.l}</span><span class="val">${r.v}</span></div>`
     ).join('');
 
-    // Network log
-    document.getElementById('net-log').innerHTML = d.requests.map(r => {
-      const hl = /logconsent/i.test(r.url);
-      return `<div class="net-row ${hl ? 'hl' : ''}">[+${r.ms}ms] ${r.url}</div>`;
-    }).join('');
-
-    // Update IP with Cookiebot's own country
-    if (uc) document.getElementById('uc-country').textContent = uc;
+    document.getElementById('net').innerHTML = d.requests.map(r =>
+      `<div class="nr ${/logconsent/i.test(r.url) ? 'hl' : ''}">[+${r.ms}ms] ${r.url}</div>`
+    ).join('');
   }
 
-  // ── Auto-run on load (when ?s= param is present) ──────────────────────────
-  async function autoRun(scenarioNum) {
-    const sc = SCENARIOS[scenarioNum];
-    if (!sc) return;
+  // Auto-run on ?run=1
+  if (new URLSearchParams(location.search).get('run') === '1') {
+    document.getElementById('run-btn').disabled = true;
+    document.getElementById('status').innerHTML = '<span class="spin"></span>Running…';
+    document.getElementById('result').style.display = 'block';
 
-    // Mark active card
-    document.getElementById(`sc${scenarioNum}`).classList.add('active');
-    [1,2,3].forEach(n => { if (n !== scenarioNum) document.getElementById(`btn${n}`).disabled = true; });
-
-    document.getElementById('status').innerHTML =
-      `<span class="spin"></span>Running Scenario ${scenarioNum}: ${sc.label}…`;
-    document.getElementById('result-card').style.display = 'block';
-
-    // Auto-accept banner immediately when it shows
     window.addEventListener('CookiebotOnDialogDisplay', () => {
-      document.getElementById('status').innerHTML =
-        `<span class="spin"></span>Banner shown — auto-accepting…`;
       try {
         if (window.Cookiebot?.acceptAllConsents) window.Cookiebot.acceptAllConsents();
         else if (window.Cookiebot?.submitCustomConsent) window.Cookiebot.submitCustomConsent(true,true,true);
       } catch(_) {}
     }, { once: true });
 
-    // Inject Cookiebot — NO blockingmode (prevents DOM mutation after accept)
-    const script = document.createElement('script');
-    script.id   = 'Cookiebot';
-    script.type = 'text/javascript';
-    script.src  = 'https://consent.cookiebot.com/uc.js';
-    script.setAttribute('data-cbid',       DEFAULT_CBID);  // fallback when no georegion matches
-    script.setAttribute('data-georegions', sc.georegions);
+    const s = document.createElement('script');
+    s.id   = 'Cookiebot';
+    s.type = 'text/javascript';
+    s.src  = 'https://consent.cookiebot.com/uc.js';
+    s.setAttribute('data-cbid',       DEFAULT_CBID);
+    s.setAttribute('data-georegions', GEOREGIONS);
+    s.onload = s.onerror = () => {
+      setTimeout(() => {
+        const poll = setInterval(() => {
+          renderResult();
+          if (window._dbg.resolvedCbid) {
+            clearInterval(poll);
+            const c = cls(window._dbg.resolvedCbid);
+            document.getElementById('status').textContent =
+              c === 'ca'      ? '✅ Done — CA CBID loaded' :
+              c === 'us'      ? '⚠️ Done — US CBID loaded' :
+              c === 'default' ? '⚠️ Done — DEFAULT CBID (no match)' : 'Done';
+          }
+        }, 300);
+        setTimeout(() => { clearInterval(poll); renderResult();
+          if (!window._dbg.resolvedCbid) document.getElementById('status').textContent =
+            '⚠️ logconsent not captured — check DevTools → Network → filter "logconsent"';
+        }, 10000);
+      }, 500);
+    };
+    document.head.appendChild(s);
 
-    await new Promise(resolve => {
-      script.onload  = resolve;
-      script.onerror = resolve;
-      setTimeout(resolve, 12000);
-      document.head.appendChild(script);
-    });
-
-    document.getElementById('status').innerHTML =
-      `<span class="spin"></span>Waiting for logconsent (up to 8s)…`;
-
-    // Wait for logconsent to fire
-    await new Promise(resolve => {
-      const deadline = Date.now() + 8000;
-      const poll = setInterval(() => {
-        renderResult();
-        if (window._dbg.resolvedCbid || Date.now() > deadline) {
-          clearInterval(poll);
-          resolve();
-        }
-      }, 300);
-    });
-
-    renderResult();
-
-    const rc  = window._dbg.resolvedCbid;
-    const cls = classify(rc);
-
-    if (cls === 'ca') {
-      document.getElementById('status').innerHTML = `✅ Scenario ${scenarioNum} done — CA CBID loaded`;
-    } else if (cls === 'us') {
-      document.getElementById('status').innerHTML = `⚠️ Scenario ${scenarioNum} done — US CBID loaded (not CA)`;
-    } else if (cls === 'default') {
-      document.getElementById('status').innerHTML = `⚠️ Scenario ${scenarioNum} done — DEFAULT CBID (no georegion matched)`;
-    } else {
-      document.getElementById('status').innerHTML =
-        `⚠️ logconsent not captured. Check DevTools → Network → filter "logconsent" to read cbid= manually.`;
-    }
+    setInterval(renderResult, 800);
   }
-
-  // Auto-trigger on load
-  if (_activeScenario >= 1 && _activeScenario <= 3) {
-    window.addEventListener('DOMContentLoaded', () => autoRun(_activeScenario));
-  }
-
-  // Periodic refresh while running
-  setInterval(() => {
-    if (_activeScenario && document.getElementById('result-card').style.display !== 'none') {
-      renderResult();
-    }
-  }, 800);
 </script>
 </body>
 </html>
